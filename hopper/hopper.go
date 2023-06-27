@@ -20,18 +20,6 @@ type Hopper struct {
 	db *bbolt.DB
 }
 
-type OptFunc func(opts *Options)
-
-type Options struct {
-	DBName string
-}
-
-func WithDBName(name string) OptFunc {
-	return func(opts *Options) {
-		opts.DBName = name
-	}
-}
-
 func New(options ...OptFunc) (*Hopper, error) {
 	opts := &Options{
 		DBName: defaultDBName,
@@ -108,6 +96,9 @@ func (h *Hopper) PrintCollection(coll string) error {
 		return fmt.Errorf("collection (%s) not found", coll)
 	}
 	if err = b.ForEach(func(k, v []byte) error {
+		if k == nil {
+			return nil
+		}
 		data, err := UnmarshalKV(k, v)
 		if err != nil {
 			return err
