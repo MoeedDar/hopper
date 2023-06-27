@@ -1,7 +1,6 @@
 package hopper
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,12 +14,6 @@ const (
 )
 
 type Map map[string]any
-
-type Filter struct {
-	EQ    map[string]any
-	Limit int
-	Sort  string
-}
 
 type Hopper struct {
 	*Options
@@ -95,56 +88,34 @@ func (h *Hopper) Insert(collName string, data Map) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if err := collBucket.Put(uint64Bytes(id), b); err != nil {
+	if err := collBucket.Put(uint64ToBytes(id), b); err != nil {
 		return 0, err
 	}
 	return id, tx.Commit()
 }
 
-func (h *Hopper) Find(coll string, filter Filter) ([]Map, error) {
-	tx, err := h.db.Begin(true)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+func (h *Hopper) Find(coll string, limit uint) *Filter {
+	return NewFilter(h.db, coll, limit)
+}
 
-	bucket := tx.Bucket([]byte(coll))
-	if bucket == nil {
-		return nil, fmt.Errorf("collection (%s) not found", coll)
+func (h *Hopper) PrintCollection(coll string) error {
+	tx, err := h.db.Begin(false)
+	if err != nil {
+		return err
 	}
-	results := []Map{}
-	bucket.ForEach(func(k, v []byte) error {
-		data := Map{
-			"id": uint64FromBytes(k),
-		}
-		if err := json.Unmarshal(v, &data); err != nil {
+	b := tx.Bucket([]byte(coll))
+	if b == nil {
+		return fmt.Errorf("collection (%s) not found", coll)
+	}
+	if err = b.ForEach(func(k, v []byte) error {
+		data, err := UnmarshalKV(k, v)
+		if err != nil {
 			return err
 		}
-		include := true
-		if filter.EQ != nil {
-			include = false
-			for fk, fv := range filter.EQ {
-				if value, ok := data[fk]; ok {
-					if fv == value {
-						include = true
-					}
-				}
-			}
-		}
-		if include {
-			results = append(results, data)
-		}
+		fmt.Println(data)
 		return nil
-	})
-	return results, tx.Commit()
-}
-
-func uint64Bytes(n uint64) []byte {
-	b := make([]byte, 8)
-	binary.LittleEndian.PutUint64(b, n)
-	return b
-}
-
-func uint64FromBytes(b []byte) uint64 {
-	return binary.LittleEndian.Uint64(b)
+	}); err != nil {
+		return err
+	}
+	return nil
 }
